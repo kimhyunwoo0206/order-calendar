@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>위드프레쉬 발주달력</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --navy:#0F2A3F;
+    --deep-teal:#0B4F5C;
+    --sea:#1B7A8C;
+    --foam:#EAF4F3;
+    --paper:#FBFAF6;
+    --coral:#E8734A;
+    --ink:#122023;
+    --line:#D8E3E1;
+
+    --c-coupang:#2563EB;
+    --c-mega:#16A34A;
+    --c-ns:#D97706;
+    --c-naver:#65A30D;
+    --c-seopung:#7C3AED;
+    --c-maeip:#57606B;
+    --c-oasis:#DB2777;
+    --c-etc:#475569;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    -webkit-tap-highlight-color:transparent;
+    overscroll-behavior-y:none;
+  }
+
+  /* ---------- Header ---------- */
+  .topbar{
+    background:var(--navy);
+    color:#fff;
+    padding:18px 16px 22px;
+    position:sticky;
+    top:0;
+    z-index:20;
+  }
+  .brand{
+    font-size:13px;
+    letter-spacing:.14em;
+    opacity:.65;
+    font-weight:600;
+    text-transform:uppercase;
+  }
+  .month-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-top:6px;
+  }
+  .month-title{
+    font-size:26px;
+    font-weight:800;
+    letter-spacing:-0.01em;
+  }
+  .month-nav{
+    display:flex;
+    gap:8px;
+  }
+  .navbtn{
+    width:44px;height:44px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.22);
+    background:rgba(255,255,255,.06);
+    color:#fff;
+    font-size:20px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    user-select:none;
+  }
+  .navbtn:active{background:rgba(255,255,255,.18);}
+  .today-btn{
+    margin-top:12px;
+    display:inline-block;
+    font-size:13px;
+    padding:7px 14px;
+    border-radius:999px;
+    background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.25);
+    color:#fff;
+    cursor:pointer;
+  }
+
+  /* ---------- Legend ---------- */
+  .legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 14px;
+    padding:12px 16px;
+    background:var(--foam);
+    border-bottom:1px solid var(--line);
+    font-size:12.5px;
+  }
+  .legend-item{display:flex;align-items:center;gap:6px;color:var(--deep-teal);font-weight:600;}
+  .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+
+  /* ---------- Calendar grid ---------- */
+  .cal-wrap{padding:6px 12px 100px;}
+
+  .day-row{
+    display:flex;
+    align-items:flex-start;
+    gap:14px;
+    padding:14px 0;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+  }
+  .day-row:active{background:var(--foam);}
+  .day-row.today .date-badge{
+    background:var(--coral);
+    color:#fff;
+  }
+  .day-row.today .wd{color:var(--coral);}
+
+  .date-badge-wrap{
+    width:52px;
+    flex-shrink:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding-top:2px;
+  }
+  .wd{
+    font-size:11.5px;
+    font-weight:700;
+    color:#8a9695;
+    margin-bottom:4px;
+  }
+  .day-row.sun .wd{color:#C0453A;}
+  .day-row.sat .wd{color:var(--sea);}
+  .date-badge{
+    width:34px;height:34px;
+    border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:15px;
+    font-weight:800;
+    color:#2b3a3a;
+    background:var(--foam);
+  }
+  .day-row.sun .date-badge{color:#C0453A;}
+  .day-row.sat .date-badge{color:var(--sea);}
+  .month-mark{
+    font-size:10px;
+    font-weight:800;
+    color:var(--coral);
+    margin-top:3px;
+  }
+
+  .day-content{
+    flex:1;
+    min-width:0;
+    padding-top:2px;
+  }
+  .day-tags{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .row-tag{
+    font-size:13px;
+    font-weight:700;
+    color:#fff;
+    padding:6px 10px;
+    border-radius:8px;
+    white-space:normal;
+    line-height:1.4;
+  }
+  .row-tag .items-preview{
+    display:block;
+    font-weight:500;
+    font-size:12px;
+    opacity:.92;
+    margin-top:2px;
+    white-space:pre-line;
+  }
+  .day-empty-mark{
+    color:#c3cdcc;
+    font-size:13px;
+    padding-top:6px;
+  }
+
+  .month-section{
+    margin-top:18px;
+  }
+
+  /* ---------- FAB ---------- */
+  .fab{
+    position:fixed;
+    right:20px;
+    bottom:24px;
+    width:60px;height:60px;
+    border-radius:50%;
+    background:var(--coral);
+    color:#fff;
+    font-size:30px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 20px rgba(232,115,74,.45);
+    cursor:pointer;
+    z-index:30;
+    border:none;
+  }
+  .fab:active{transform:scale(.94);}
+
+  /* ---------- Sheet / Modal ---------- */
+  .overlay{
+    position:fixed;inset:0;
+    background:rgba(10,20,22,.45);
+    z-index:40;
+    display:none;
+  }
+  .overlay.show{display:block;}
+  .sheet{
+    position:fixed;
+    left:0;right:0;bottom:0;
+    background:#fff;
+    border-radius:22px 22px 0 0;
+    z-index:50;
+    max-height:88vh;
+    overflow-y:auto;
+    transform:translateY(100%);
+    transition:transform .25s ease;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .sheet.show{transform:translateY(0);}
+  .sheet-handle{
+    width:40px;height:4px;
+    background:#DDE5E4;
+    border-radius:99px;
+    margin:10px auto 4px;
+  }
+  .sheet-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:6px 18px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  .sheet-date{font-size:18px;font-weight:800;color:var(--navy);}
+  .sheet-close{
+    width:34px;height:34px;
+    border-radius:50%;
+    background:var(--foam);
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;
+    color:#5b6b6a;
+    cursor:pointer;
+    border:none;
+  }
+  .sheet-body{padding:14px 18px 26px;}
+
+  .order-card{
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:12px 14px;
+    margin-bottom:10px;
+  }
+  .order-card-top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:8px;
+  }
+  .chip{
+    font-size:12px;
+    font-weight:800;
+    color:#fff;
+    padding:4px 10px;
+    border-radius:999px;
+  }
+  .order-actions{display:flex;gap:6px;}
+  .icon-btn{
+    width:30px;height:30px;
+    border-radius:8px;
+    border:none;
+    background:var(--foam);
+    color:#5b6b6a;
+    font-size:14px;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .items-list{
+    font-size:14.5px;
+    line-height:1.65;
+    color:var(--ink);
+    white-space:pre-wrap;
+    word-break:keep-all;
+  }
+  .writer-tag{
+    font-size:11px;
+    color:#8a9695;
+    margin-top:8px;
+    font-weight:600;
+  }
+  .empty-day{
+    text-align:center;
+    color:#9aa6a5;
+    font-size:14px;
+    padding:30px 0 10px;
+  }
+  .add-here-btn{
+    width:100%;
+    margin-top:6px;
+    padding:14px;
+    border-radius:14px;
+    border:1.5px dashed var(--sea);
+    background:var(--foam);
+    color:var(--deep-teal);
+    font-weight:800;
+    font-size:15px;
+    cursor:pointer;
+  }
+
+  /* ---------- Form ---------- */
+  .field{margin-bottom:16px;}
+  .field label{
+    display:block;
+    font-size:13px;
+    font-weight:800;
+    color:var(--deep-teal);
+    margin-bottom:7px;
+  }
+  .field input[type="date"],
+  .field select,
+  .field textarea{
+    width:100%;
+    border:1.5px solid var(--line);
+    border-radius:12px;
+    padding:13px 14px;
+    font-size:16px;
+    font-family:inherit;
+    color:var(--ink);
+    background:#fff;
+  }
+  .field textarea{
+    min-height:130px;
+    resize:vertical;
+    line-height:1.6;
+  }
+  .field .hint{
+    font-size:12px;
+    color:#9aa6a5;
+    margin-top:6px;
+  }
+  .channel-grid{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+  }
+  .channel-opt{
+    padding:10px 4px;
+    border-radius:12px;
+    border:1.5px solid var(--line);
+    text-align:center;
+    font-size:12.5px;
+    font-weight:700;
+    color:#5b6b6a;
+    cursor:pointer;
+  }
+  .channel-opt.selected{
+    color:#fff;
+    border-color:transparent;
+  }
+  .save-btn{
+    width:100%;
+    padding:16px;
+    border-radius:14px;
+    border:none;
+    background:var(--navy);
+    color:#fff;
+    font-size:16px;
+    font-weight:800;
+    cursor:pointer;
+    margin-top:6px;
+  }
+  .save-btn:active{opacity:.85;}
+  .delete-confirm-btn{
+    width:100%;
+    padding:14px;
+    border-radius:14px;
+    border:1.5px solid #E5453A;
+    background:#fff;
+    color:#E5453A;
+    font-size:15px;
+    font-weight:800;
+    cursor:pointer;
+    margin-top:8px;
+  }
+
+  .toast{
+    position:fixed;
+    left:50%;
+    bottom:100px;
+    transform:translateX(-50%);
+    background:var(--navy);
+    color:#fff;
+    padding:12px 20px;
+    border-radius:999px;
+    font-size:13.5px;
+    font-weight:700;
+    z-index:60;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .2s ease, transform .2s ease;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
+
+  .conn-status{
+    position:fixed;
+    top:10px;right:12px;
+    font-size:10.5px;
+    color:rgba(255,255,255,.55);
+    z-index:25;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="conn-status" id="connStatus">연결 중…</div>
+  <div class="brand">위드프레쉬 발주관리</div>
+  <div class="month-row">
+    <div class="month-title" id="monthTitle">2026년 8월</div>
+    <div class="month-nav">
+      <button class="navbtn" id="prevBtn">‹</button>
+      <button class="navbtn" id="nextBtn">›</button>
+    </div>
+  </div>
+  <div class="today-btn" id="todayBtn">오늘로 이동</div>
+</div>
+
+<div class="legend" id="legend"></div>
+
+<div class="cal-wrap">
+  <div class="grid" id="grid"></div>
+</div>
+
+<button class="fab" id="fabBtn">＋</button>
+
+<div class="overlay" id="overlay"></div>
+
+<!-- Day detail sheet -->
+<div class="sheet" id="daySheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head">
+    <div class="sheet-date" id="sheetDate">8월 19일 (수)</div>
+    <button class="sheet-close" id="daySheetClose">✕</button>
+  </div>
+  <div class="sheet-body" id="dayBody"></div>
+</div>
+
+<!-- Add/Edit form sheet -->
+<div class="sheet" id="formSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head">
+    <div class="sheet-date" id="formTitle">발주 추가</div>
+    <button class="sheet-close" id="formSheetClose">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="field">
+      <label>출고(발주)일</label>
+      <input type="date" id="fDate">
+    </div>
+    <div class="field">
+      <label>채널</label>
+      <div class="channel-grid" id="channelGrid"></div>
+    </div>
+    <div class="field">
+      <label>품목 / 수량</label>
+      <textarea id="fItems" placeholder="한 줄에 한 품목씩 입력&#10;예)&#10;원양산 통오징어, 320g 3,000개&#10;냉동굴 1kg 65개&#10;손질꽃게 2절 1kg 12개"></textarea>
+      <div class="hint">줄바꿈으로 품목을 구분해서 넣으면 목록에 그대로 표시됩니다.</div>
+    </div>
+    <button class="save-btn" id="saveBtn">저장</button>
+    <button class="delete-confirm-btn" id="deleteBtn" style="display:none;">이 발주 삭제</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   1) Firebase 설정
+   -- 아래 firebaseConfig 값을 본인 Firebase 프로젝트 값으로 교체하세요.
+   -- Firebase 콘솔 > 프로젝트 설정 > 일반 > 내 앱 > SDK 설정에서 확인 가능
+========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDInKlXJ10atBW4mEKbELG-eyDegLLhpjs",
+  authDomain: "withfresh-order.firebaseapp.com",
+  projectId: "withfresh-order",
+  storageBucket: "withfresh-order.firebasestorage.app",
+  messagingSenderId: "1081597023101",
+  appId: "1:1081597023101:web:0ff74d1e32b165e1183214"
+};
+
+const DEMO_MODE = firebaseConfig.apiKey === "YOUR_API_KEY";
+let db = null;
+if(!DEMO_MODE){
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+}
+const COLLECTION = "orders";
+
+/* 데모용 샘플 데이터 (Firebase 미설정 시 미리보기용, 카톡 발주방 8월 데이터 기반) */
+const DEMO_DATA = [
+  { id:"d1", date:"2026-08-17", channel:"coupang", items:"국산 손질 오징어, 250g 210개\n원양산 통오징어, 320g 2,800개\n냉동굴 1kg 130개\n손질꽃게 2절 1kg 12개", writer:"김현우" },
+  { id:"d2", date:"2026-08-17", channel:"naver", items:"국내산 손질오징어 500g 1개", writer:"김현우" },
+  { id:"d3", date:"2026-08-18", channel:"mega", items:"[동래점] 간장게장 500g 32개, 양념게장 300g 16개\n[울산점] 간장게장 500g 8개, 양념게장 300g 16개", writer:"김현우" },
+  { id:"d4", date:"2026-08-19", channel:"coupang", items:"국산 손질 오징어, 250g 420개\n원양산 통오징어, 320g 2,800개\n냉동굴 1kg 559개\n손질꽃게 2절 1kg 204개\n손질꽃게 2절 500g 260개", writer:"김현우" },
+  { id:"d5", date:"2026-08-20", channel:"seopung", items:"손질오징어 500g 2,360개\n손질오징어 250g 690개", writer:"김현우" },
+  { id:"d6", date:"2026-08-20", channel:"maeip", items:"손질갑오징어(국산) 200g 960개\n손질 참돔(국산) 300g 440개", writer:"김현우" },
+  { id:"d7", date:"2026-08-20", channel:"mega", items:"[김해점] 간장게장 500g 16개, 양념게장 300g 16개", writer:"김현우" },
+  { id:"d8", date:"2026-08-24", channel:"coupang", items:"원양산 통오징어, 320g 3,200개\n국산 통오징어, 320g 2,400개\n마른오징어 100g(2마리) 90개", writer:"김현우" },
+  { id:"d9", date:"2026-08-25", channel:"mega", items:"[울산점] 간장게장 500g 16개\n[기장점] 간장게장 500g 8개\n[덕천점] 간장게장 500g 8개", writer:"김현우" },
+  { id:"d10", date:"2026-08-26", channel:"coupang", items:"국산 손질 오징어, 250g 30개\n원양산 통오징어, 320g 2,400개\n냉동굴 1kg 260개\n손질꽃게 2절 1kg 24개\n손질꽃게 2절 500g 20개", writer:"김현우" },
+  { id:"d11", date:"2026-08-26", channel:"mega", items:"갑오징어 5kg(23미) 100박스", writer:"전경진" }
+];
+
+/* =========================================================
+   2) 채널 정의
+========================================================= */
+const CHANNELS = [
+  { id:"coupang", label:"쿠팡",   color:"var(--c-coupang)" },
+  { id:"mega",    label:"메가마트", color:"var(--c-mega)" },
+  { id:"ns",      label:"NS/공영", color:"var(--c-ns)" },
+  { id:"naver",   label:"네이버",  color:"var(--c-naver)" },
+  { id:"seopung", label:"서풍",   color:"var(--c-seopung)" },
+  { id:"oasis",   label:"오아시스", color:"var(--c-oasis)" },
+  { id:"maeip",   label:"매입입고", color:"var(--c-maeip)" },
+  { id:"etc",     label:"기타",   color:"var(--c-etc)" }
+];
+const channelMap = Object.fromEntries(CHANNELS.map(c=>[c.id,c]));
+
+/* =========================================================
+   3) State
+========================================================= */
+let centerDate = new Date();  // 기준일 (오늘)
+let ordersByDate = {};   // { "2026-08-19": [ {id, channel, items, writer, date} ] }
+let selectedChannel = CHANNELS[0].id;
+let editingId = null;
+let activeDateStr = null;
+
+const pad = n => String(n).padStart(2,"0");
+const toDateStr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayStr = toDateStr(new Date());
+const addDays = (d, n) => { const nd = new Date(d); nd.setDate(nd.getDate()+n); return nd; };
+
+/* =========================================================
+   4) Legend 렌더
+========================================================= */
+function renderLegend(){
+  const el = document.getElementById("legend");
+  el.innerHTML = CHANNELS.map(c=>`
+    <div class="legend-item">
+      <span class="dot" style="background:${c.color}"></span>${c.label}
+    </div>`).join("");
+}
+renderLegend();
+
+/* =========================================================
+   5) Channel picker 렌더 (form)
+========================================================= */
+function renderChannelGrid(){
+  const el = document.getElementById("channelGrid");
+  el.innerHTML = CHANNELS.map(c=>`
+    <div class="channel-opt" data-id="${c.id}" style="${selectedChannel===c.id ? `background:${c.color};` : ''}">
+      ${c.label}
+    </div>`).join("");
+  el.querySelectorAll(".channel-opt").forEach(opt=>{
+    opt.addEventListener("click", ()=>{
+      selectedChannel = opt.dataset.id;
+      renderChannelGrid();
+    });
+  });
+}
+
+/* =========================================================
+   6) Firestore 실시간 구독
+========================================================= */
+function subscribeOrders(){
+  if(DEMO_MODE){
+    ordersByDate = {};
+    DEMO_DATA.forEach(d=>{
+      if(!ordersByDate[d.date]) ordersByDate[d.date] = [];
+      ordersByDate[d.date].push(d);
+    });
+    document.getElementById("connStatus").textContent = "데모 모드 (Firebase 미설정)";
+    renderCalendar();
+    return;
+  }
+  db.collection(COLLECTION).orderBy("date").onSnapshot(snap=>{
+    ordersByDate = {};
+    snap.forEach(doc=>{
+      const d = doc.data();
+      const key = d.date;
+      if(!ordersByDate[key]) ordersByDate[key] = [];
+      ordersByDate[key].push({ id: doc.id, ...d });
+    });
+    document.getElementById("connStatus").textContent = "실시간 연결됨";
+    renderCalendar();
+  }, err=>{
+    document.getElementById("connStatus").textContent = "연결 실패 (설정 확인)";
+    console.error(err);
+  });
+}
+
+/* =========================================================
+   7) 캘린더 렌더 (세로 리스트형, 오늘 기준 ±7일)
+========================================================= */
+function renderCalendar(){
+  const weekdayNames = ["일","월","화","수","목","금","토"];
+  const start = addDays(centerDate, -7);
+  const end = addDays(centerDate, 7);
+
+  const startLabel = `${start.getMonth()+1}월 ${start.getDate()}일`;
+  const endLabel = `${end.getMonth()+1}월 ${end.getDate()}일`;
+  document.getElementById("monthTitle").textContent = `${startLabel} – ${endLabel}`;
+
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+
+  for(let offset=-7; offset<=7; offset++){
+    const dateObj = addDays(centerDate, offset);
+    const dateStr = toDateStr(dateObj);
+    const dow = dateObj.getDay();
+    const day = dateObj.getDate();
+    const month = dateObj.getMonth()+1;
+
+    const row = document.createElement("div");
+    row.className = "day-row" + (dow===0?" sun":"") + (dow===6?" sat":"") + (dateStr===todayStr?" today":"");
+    row.dataset.date = dateStr;
+
+    const dayEntries = ordersByDate[dateStr] || [];
+
+    let contentHtml;
+    if(dayEntries.length===0){
+      contentHtml = `<div class="day-empty-mark">—</div>`;
+    } else {
+      contentHtml = `<div class="day-tags">` + dayEntries.map(o=>{
+        const ch = channelMap[o.channel] || channelMap.etc;
+        return `<div class="row-tag" style="background:${ch.color}">${ch.label}
+          <span class="items-preview">${escapeHtml(o.items||"")}</span>
+        </div>`;
+      }).join("") + `</div>`;
+    }
+
+    // 월이 바뀌는 지점(1일)이거나 리스트 첫 줄이면 "8월 19일"처럼 월 표기
+    const showMonth = (day===1) || (offset===-7);
+
+    row.innerHTML = `
+      <div class="date-badge-wrap">
+        <div class="wd">${weekdayNames[dow]}</div>
+        <div class="date-badge">${day}</div>
+        ${showMonth ? `<div class="month-mark">${month}월</div>` : ""}
+      </div>
+      <div class="day-content">${contentHtml}</div>
+    `;
+    row.addEventListener("click", ()=> openDaySheet(dateStr));
+    grid.appendChild(row);
+  }
+}
+
+/* =========================================================
+   8) Day sheet
+========================================================= */
+function openDaySheet(dateStr){
+  activeDateStr = dateStr;
+  const d = new Date(dateStr);
+  const wd = ["일","월","화","수","목","금","토"][d.getDay()];
+  document.getElementById("sheetDate").textContent = `${d.getMonth()+1}월 ${d.getDate()}일 (${wd})`;
+
+  const entries = ordersByDate[dateStr] || [];
+  const body = document.getElementById("dayBody");
+
+  if(entries.length===0){
+    body.innerHTML = `<div class="empty-day">등록된 발주가 없습니다</div>`;
+  } else {
+    body.innerHTML = entries.map(o=>{
+      const ch = channelMap[o.channel] || channelMap.etc;
+      return `
+        <div class="order-card">
+          <div class="order-card-top">
+            <span class="chip" style="background:${ch.color}">${ch.label}</span>
+            <div class="order-actions">
+              <button class="icon-btn" data-edit="${o.id}">✎</button>
+              <button class="icon-btn" data-del="${o.id}">🗑</button>
+            </div>
+          </div>
+          <div class="items-list">${escapeHtml(o.items||"")}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  body.innerHTML += `<button class="add-here-btn" id="addHereBtn">이 날짜에 발주 추가</button>`;
+
+  body.querySelectorAll("[data-edit]").forEach(btn=>{
+    btn.addEventListener("click", ()=> openForm(dateStr, btn.dataset.edit));
+  });
+  body.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=> confirmDelete(btn.dataset.del));
+  });
+  document.getElementById("addHereBtn").addEventListener("click", ()=> openForm(dateStr, null));
+
+  showSheet("daySheet");
+}
+
+function escapeHtml(str){
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+/* =========================================================
+   9) Form sheet (추가/수정)
+========================================================= */
+function openForm(dateStr, id){
+  editingId = id;
+  document.getElementById("formTitle").textContent = id ? "발주 수정" : "발주 추가";
+  document.getElementById("fDate").value = dateStr || todayStr;
+  document.getElementById("deleteBtn").style.display = id ? "block" : "none";
+
+  if(id){
+    const entry = (ordersByDate[dateStr]||[]).find(o=>o.id===id);
+    if(entry){
+      selectedChannel = entry.channel;
+      document.getElementById("fItems").value = entry.items || "";
+    }
+  } else {
+    selectedChannel = selectedChannel || CHANNELS[0].id;
+    document.getElementById("fItems").value = "";
+  }
+  renderChannelGrid();
+  hideSheet("daySheet");
+  showSheet("formSheet");
+}
+
+function saveOrder(){
+  if(DEMO_MODE){ showToast("데모 모드입니다 — Firebase 연결 후 저장 가능"); return; }
+  const dateStr = document.getElementById("fDate").value;
+  const items = document.getElementById("fItems").value.trim();
+  const writer = "김현우";
+
+  if(!dateStr){ showToast("날짜를 선택해 주세요"); return; }
+  if(!items){ showToast("품목을 입력해 주세요"); return; }
+
+  const payload = { date: dateStr, channel: selectedChannel, items, writer, updatedAt: Date.now() };
+
+  const action = editingId
+    ? db.collection(COLLECTION).doc(editingId).update(payload)
+    : db.collection(COLLECTION).add(payload);
+
+  action.then(()=>{
+    showToast(editingId ? "발주가 수정되었습니다" : "발주가 저장되었습니다");
+    hideSheet("formSheet");
+    editingId = null;
+  }).catch(err=>{
+    console.error(err);
+    showToast("저장 실패 — 연결을 확인해 주세요");
+  });
+}
+
+function confirmDelete(id){
+  if(DEMO_MODE){ showToast("데모 모드입니다 — Firebase 연결 후 삭제 가능"); return; }
+  if(confirm("이 발주를 삭제할까요?")){
+    db.collection(COLLECTION).doc(id).delete().then(()=>{
+      showToast("삭제되었습니다");
+    });
+  }
+}
+
+/* =========================================================
+   10) Sheet helpers
+========================================================= */
+function showSheet(id){
+  document.getElementById("overlay").classList.add("show");
+  document.getElementById(id).classList.add("show");
+}
+function hideSheet(id){
+  document.getElementById(id).classList.remove("show");
+  const anyOpen = document.querySelectorAll(".sheet.show").length>0;
+  if(!anyOpen) document.getElementById("overlay").classList.remove("show");
+}
+function hideAllSheets(){
+  document.querySelectorAll(".sheet").forEach(s=>s.classList.remove("show"));
+  document.getElementById("overlay").classList.remove("show");
+}
+
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=> t.classList.remove("show"), 2200);
+}
+
+/* =========================================================
+   11) Events
+========================================================= */
+document.getElementById("prevBtn").addEventListener("click", ()=>{
+  centerDate = addDays(centerDate, -7);
+  renderCalendar();
+});
+document.getElementById("nextBtn").addEventListener("click", ()=>{
+  centerDate = addDays(centerDate, 7);
+  renderCalendar();
+});
+document.getElementById("todayBtn").addEventListener("click", ()=>{
+  centerDate = new Date();
+  renderCalendar();
+});
+document.getElementById("fabBtn").addEventListener("click", ()=> openForm(todayStr, null));
+document.getElementById("overlay").addEventListener("click", hideAllSheets);
+document.getElementById("daySheetClose").addEventListener("click", ()=> hideSheet("daySheet"));
+document.getElementById("formSheetClose").addEventListener("click", ()=> hideSheet("formSheet"));
+document.getElementById("saveBtn").addEventListener("click", saveOrder);
+document.getElementById("deleteBtn").addEventListener("click", ()=>{
+  if(DEMO_MODE){ showToast("데모 모드입니다 — Firebase 연결 후 삭제 가능"); return; }
+  if(editingId && confirm("이 발주를 삭제할까요?")){
+    db.collection(COLLECTION).doc(editingId).delete().then(()=>{
+      showToast("삭제되었습니다");
+      hideSheet("formSheet");
+    });
+  }
+});
+
+/* =========================================================
+   12) Init
+========================================================= */
+renderChannelGrid();
+renderCalendar();
+subscribeOrders();
+</script>
+</body>
+</html>
