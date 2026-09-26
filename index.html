@@ -9,7 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <!-- 엑셀 다운로드용 -->
-<script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <style>
   :root{
@@ -209,6 +209,40 @@
     margin-top:3px;
     white-space:pre-line;
   }
+  .row-tag.st-done{opacity:.55;}
+  .row-tag.st-sales{opacity:.45;}
+  .st-badge{
+    display:inline-block;
+    font-size:12.5px;
+    font-weight:800;
+    padding:2px 9px;
+    border-radius:999px;
+    margin-left:6px;
+    vertical-align:1px;
+    background:rgba(255,255,255,.95);
+    color:var(--navy);
+  }
+  .arr-note{font-size:13px;font-weight:700;opacity:.9;margin-left:6px;}
+  .ship-btn{
+    width:100%;
+    margin-top:12px;
+    padding:14px;
+    border-radius:12px;
+    border:none;
+    font-size:17px;
+    font-weight:800;
+    cursor:pointer;
+    background:#16A34A;
+    color:#fff;
+  }
+  .ship-btn.undo{background:#fff;color:#16A34A;border:1.5px solid #16A34A;}
+  .ship-info{font-size:13.5px;color:#16A34A;font-weight:700;margin-top:8px;}
+  .po-note{font-size:13.5px;color:#8a6100;background:#FFF6DC;border-radius:10px;padding:10px 12px;margin-top:8px;line-height:1.55;}
+  .legend-item{cursor:pointer;padding:3px 8px;border-radius:999px;border:1.5px solid transparent;}
+  .legend-item.off{opacity:.35;}
+  .legend-item.only{border-color:var(--deep-teal);background:#fff;}
+  .legend-hint{font-size:12.5px;color:#7b8a89;width:100%;margin-top:-4px;}
+  .field input[type="date"].opt{border-style:dashed;}
   .day-empty-mark{
     color:#c3cdcc;
     font-size:16px;
@@ -496,8 +530,17 @@
   </div>
   <div class="sheet-body">
     <div class="field">
-      <label>출고(발주)일</label>
+      <label>출고일</label>
       <input type="date" id="fDate">
+    </div>
+    <div class="field">
+      <label>입고(납품)일 <span style="font-weight:600;color:#9aa6a5">— 선택</span></label>
+      <input type="date" id="fArrival" class="opt">
+      <div class="hint">거래처 도착일이 출고일과 다를 때만 넣으세요. 쿠팡 외 채널은 판매입력이 이 날짜 기준입니다.</div>
+    </div>
+    <div class="po-note" id="poNote" style="display:none">
+      쿠팡 PO로 자동 등록된 건입니다. 품목·수량은 쿠팡도구에서 PO 파일을 다시 올려야 바뀝니다.
+      여기서는 <b>출고일·입고일</b>만 고칠 수 있습니다.
     </div>
     <div class="field">
       <label>채널</label>
@@ -595,6 +638,7 @@ let centerDate = new Date();  // 기준일 (오늘)
 let ordersByDate = {};   // { "2026-08-19": [ {id, channel, items, writer, date} ] }
 let selectedChannel = CHANNELS[0].id;
 let editingId = null;
+let editingIsPo = false;
 let activeDateStr = null;
 
 const pad = n => String(n).padStart(2,"0");
@@ -605,14 +649,25 @@ const addDays = (d, n) => { const nd = new Date(d); nd.setDate(nd.getDate()+n); 
 /* =========================================================
    4) Legend 렌더
 ========================================================= */
+/* 채널 필터: 범례를 누르면 그 채널만 보기, 다시 누르면 전체 */
+let onlyChannel = null;
 function renderLegend(){
   const el = document.getElementById("legend");
   el.innerHTML = CHANNELS.map(c=>`
-    <div class="legend-item">
+    <div class="legend-item ${onlyChannel ? (onlyChannel===c.id?'only':'off') : ''}" data-ch="${c.id}">
       <span class="dot" style="background:${c.color}"></span>${c.label}
-    </div>`).join("");
+    </div>`).join("") + `<div class="legend-hint">${onlyChannel ? '다시 누르면 전체 보기' : '채널을 누르면 그 채널만 보입니다'}</div>`;
+  el.querySelectorAll(".legend-item").forEach(it=>it.addEventListener("click", ()=>{
+    onlyChannel = (onlyChannel===it.dataset.ch) ? null : it.dataset.ch;
+    renderLegend(); renderCalendar();
+  }));
 }
 renderLegend();
+
+/* 상태: 예정 → 출고완료 → 판매입력완료 */
+function statusOf(o){ return o.status || "예정"; }
+function labelOf(o){ const ch = channelMap[o.channel] || channelMap.etc; return o.label || ch.label; }
+function shortDate(s){ if(!s) return ""; const [y,m,d]=s.split("-").map(Number); return `${m}/${d}`; }
 
 /* =========================================================
    5) Channel picker 렌더 (form)
@@ -655,6 +710,8 @@ function subscribeOrders(){
     });
     document.getElementById("connStatus").textContent = "실시간 연결됨";
     renderCalendar();
+    // 열려 있는 날짜 창도 새 내용으로 갱신 (출고완료 표시 즉시 반영)
+    if(activeDateStr && document.getElementById("daySheet").classList.contains("show")) openDaySheet(activeDateStr);
   }, err=>{
     document.getElementById("connStatus").textContent = "연결 실패 (설정 확인)";
     console.error(err);
@@ -690,7 +747,7 @@ function renderCalendar(){
     row.className = "day-row" + (dow===0?" sun":"") + (dow===6?" sat":"") + (dateStr===todayStr?" today":"");
     row.dataset.date = dateStr;
 
-    const dayEntries = ordersByDate[dateStr] || [];
+    const dayEntries = (ordersByDate[dateStr] || []).filter(o=> !onlyChannel || o.channel===onlyChannel);
 
     let contentHtml;
     if(dayEntries.length===0){
@@ -698,7 +755,12 @@ function renderCalendar(){
     } else {
       contentHtml = `<div class="day-tags">` + dayEntries.map(o=>{
         const ch = channelMap[o.channel] || channelMap.etc;
-        return `<div class="row-tag" style="background:${ch.color}">${ch.label}
+        const st = statusOf(o);
+        const cls = st==="출고완료" ? " st-done" : st==="판매입력완료" ? " st-sales" : "";
+        const badge = st==="출고완료" ? `<span class="st-badge">✓ 출고완료</span>`
+                    : st==="판매입력완료" ? `<span class="st-badge">✓ 판매입력</span>` : "";
+        const arr = (o.arrivalDate && o.arrivalDate!==o.date) ? `<span class="arr-note">→ ${shortDate(o.arrivalDate)} 입고</span>` : "";
+        return `<div class="row-tag${cls}" style="background:${ch.color}">${escapeHtml(labelOf(o))}${arr}${badge}
           <span class="items-preview">${escapeHtml(o.items||"")}</span>
         </div>`;
       }).join("") + `</div>`;
@@ -737,10 +799,22 @@ function openDaySheet(dateStr){
   } else {
     body.innerHTML = entries.map(o=>{
       const ch = channelMap[o.channel] || channelMap.etc;
+      const st = statusOf(o);
+      let shipHtml = "";
+      if(st==="예정"){
+        shipHtml = `<button class="ship-btn" data-ship="${o.id}">✓ 출고완료</button>`;
+      } else if(st==="출고완료"){
+        const t = o.shippedAt ? new Date(o.shippedAt) : null;
+        shipHtml = `<div class="ship-info">✓ 출고완료${t?` · ${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,"0")}:${String(t.getMinutes()).padStart(2,"0")}`:""}</div>
+                    <button class="ship-btn undo" data-unship="${o.id}">출고완료 취소</button>`;
+      } else {
+        shipHtml = `<div class="ship-info">✓ 판매입력완료 (수정하려면 공장장에게)</div>`;
+      }
+      const arr = o.arrivalDate ? `<div class="writer-tag">입고(납품)일 ${shortDate(o.arrivalDate)}${o.source==="po"?" · 쿠팡 PO 자동등록":""}</div>` : "";
       return `
         <div class="order-card">
           <div class="order-card-top">
-            <span class="chip" style="background:${ch.color}">${ch.label}</span>
+            <span class="chip" style="background:${ch.color}">${escapeHtml(labelOf(o))}</span>
             <div class="order-actions">
               <button class="icon-btn" data-copy="${o.id}">⧉</button>
               <button class="icon-btn" data-edit="${o.id}">✎</button>
@@ -748,6 +822,8 @@ function openDaySheet(dateStr){
             </div>
           </div>
           <div class="items-list">${escapeHtml(o.items||"")}</div>
+          ${arr}
+          ${shipHtml}
         </div>
       `;
     }).join("");
@@ -767,6 +843,12 @@ function openDaySheet(dateStr){
   });
   body.querySelectorAll("[data-del]").forEach(btn=>{
     btn.addEventListener("click", ()=> confirmDelete(btn.dataset.del));
+  });
+  body.querySelectorAll("[data-ship]").forEach(btn=>{
+    btn.addEventListener("click", ()=> setShipped(btn.dataset.ship, true));
+  });
+  body.querySelectorAll("[data-unship]").forEach(btn=>{
+    btn.addEventListener("click", ()=> setShipped(btn.dataset.unship, false));
   });
   document.getElementById("addHereBtn").addEventListener("click", ()=> openForm(dateStr, null));
 
@@ -814,16 +896,26 @@ function openForm(dateStr, id){
   document.getElementById("fDate").value = dateStr || todayStr;
   document.getElementById("deleteBtn").style.display = id ? "block" : "none";
 
+  let isPo = false;
+  document.getElementById("fArrival").value = "";
   if(id){
     const entry = (ordersByDate[dateStr]||[]).find(o=>o.id===id);
     if(entry){
       selectedChannel = entry.channel;
       document.getElementById("fItems").value = entry.items || "";
+      document.getElementById("fArrival").value = entry.arrivalDate || "";
+      isPo = entry.source === "po";
     }
   } else {
     selectedChannel = selectedChannel || CHANNELS[0].id;
     document.getElementById("fItems").value = "";
   }
+  editingIsPo = isPo;
+  document.getElementById("fItems").readOnly = isPo;
+  document.getElementById("fItems").style.background = isPo ? "#f3f5f5" : "#fff";
+  document.getElementById("poNote").style.display = isPo ? "block" : "none";
+  document.getElementById("channelGrid").style.pointerEvents = isPo ? "none" : "";
+  document.getElementById("channelGrid").style.opacity = isPo ? ".5" : "";
   renderChannelGrid();
   hideSheet("daySheet");
   showSheet("formSheet");
@@ -838,7 +930,13 @@ function saveOrder(){
   if(!dateStr){ showToast("날짜를 선택해 주세요"); return; }
   if(!items){ showToast("품목을 입력해 주세요"); return; }
 
-  const payload = { date: dateStr, channel: selectedChannel, items, writer, updatedAt: Date.now() };
+  const arrival = document.getElementById("fArrival").value || "";
+
+  // 쿠팡 PO 자동등록 건은 날짜만 수정 (품목·수량은 쿠팡도구에서 PO로 관리)
+  const payload = editingIsPo
+    ? { date: dateStr, arrivalDate: arrival, updatedAt: Date.now() }
+    : { date: dateStr, arrivalDate: arrival, channel: selectedChannel, items, writer, updatedAt: Date.now() };
+  if(!editingId) payload.status = "예정";
 
   const action = editingId
     ? db.collection(COLLECTION).doc(editingId).update(payload)
@@ -854,9 +952,28 @@ function saveOrder(){
   });
 }
 
+function findEntry(id){
+  for(const list of Object.values(ordersByDate)){ const e = list.find(o=>o.id===id); if(e) return e; }
+  return null;
+}
+
+/* 출고완료 표시 / 취소 (현장에서 누름) */
+function setShipped(id, done){
+  if(DEMO_MODE){ showToast("데모 모드입니다 — Firebase 연결 후 가능"); return; }
+  const e = findEntry(id);
+  if(e && statusOf(e)==="판매입력완료"){ showToast("판매입력이 끝난 건은 바꿀 수 없습니다"); return; }
+  if(!done && !confirm("출고완료를 취소할까요?")) return;
+  const payload = done ? { status:"출고완료", shippedAt: Date.now() } : { status:"예정", shippedAt: null };
+  db.collection(COLLECTION).doc(id).update(payload).then(()=>{
+    showToast(done ? "출고완료로 표시했습니다" : "출고완료를 취소했습니다");
+  }).catch(err=>{ console.error(err); showToast("저장 실패 — 연결을 확인해 주세요"); });
+}
+
 function confirmDelete(id){
   if(DEMO_MODE){ showToast("데모 모드입니다 — Firebase 연결 후 삭제 가능"); return; }
-  if(confirm("이 발주를 삭제할까요?")){
+  const e = findEntry(id);
+  const warn = e && e.source==="po" ? "쿠팡 PO 자동등록 건입니다.\n삭제하면 배차표·판매입력에서도 빠집니다.\n\n" : "";
+  if(confirm(warn + "이 발주를 삭제할까요?")){
     db.collection(COLLECTION).doc(id).delete().then(()=>{
       showToast("삭제되었습니다");
     });
@@ -921,18 +1038,17 @@ function exportToExcel(){
     return;
   }
 
-  const rows = [["날짜","요일","채널","품목 / 수량"]];
+  const rows = [["출고일","요일","채널","입고(납품)일","상태","품목 / 수량"]];
   dates.forEach(dateStr=>{
     const d = new Date(dateStr);
     const wd = weekdayNames[d.getDay()];
     (ordersByDate[dateStr]||[]).forEach(o=>{
-      const ch = channelMap[o.channel] || channelMap.etc;
-      rows.push([dateStr, wd, ch.label, o.items || ""]);
+      rows.push([dateStr, wd, labelOf(o), o.arrivalDate || "", statusOf(o), o.items || ""]);
     });
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = [{wch:12},{wch:6},{wch:12},{wch:60}];
+  ws["!cols"] = [{wch:12},{wch:6},{wch:16},{wch:12},{wch:12},{wch:60}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "발주내역");
 
