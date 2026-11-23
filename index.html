@@ -349,6 +349,8 @@
     display:flex;align-items:center;justify-content:center;
   }
   .rt{white-space:normal;word-break:keep-all;}
+  /* 바코드 끝 4자리 형광 표시 */
+  .bc-hl{background:#fde047;color:#111;font-weight:800;padding:0 4px;border-radius:4px;}
   .rt div,.rt p{margin:0;}
   .rt-toolbar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
   .rt-group{display:flex;gap:4px;align-items:center;background:#f1f5f4;border-radius:12px;padding:4px;}
@@ -948,7 +950,9 @@ function isRich(str){ return typeof str==="string" && str.startsWith(RT_MARK); }
 function itemsToText(str){ str=str||""; return isRich(str)? richToText(str) : str; }
 function renderItems(str){
   str=str||"";
-  return isRich(str) ? `<div class="rt">${sanitizeHtml(str)}</div>` : escapeHtml(str);
+  const html = isRich(str) ? `<div class="rt">${sanitizeHtml(str)}</div>` : escapeHtml(str);
+  // 바코드 끝 4자리 [0632] → 형광 표시 (배차도구 작업지시의 오출고 위험 상품, 2026-11-23)
+  return html.replace(/\[(\d{4})\]/g, '<span class="bc-hl">[$1]</span>');
 }
 function initEditor(){
   const ed=document.getElementById("fEditor");
